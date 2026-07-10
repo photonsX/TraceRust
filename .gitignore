@@ -1,0 +1,14 @@
+# Ignore temporary runtime files
+hard_drive_index.txt
+tracerust_transfer_log.txt
+Radix_Scanner/hard_drive_index.txt
+
+# Python caches
+__pycache__/
+*.pyc
+
+# Rust build target folder
+/radix_engine/target/
+
+# Local configuration overrides (optional, but keep default template config.json in Radix_Scanner if user wants)
+# Radix_Scanner/config.json
