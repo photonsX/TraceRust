@@ -1102,7 +1102,7 @@ class TraceMoverViewport:
             mid_frame, text=" ➡ ", command=self.stage_selected_items_via_button,
             bg=ACCENT_COLOR, fg=BG_COLOR, font=("Segoe UI", 14, "bold"), relief="flat", padx=8, pady=8, bd=0
         )
-        self.btn_stage_arrow.grid(row=1, column=0, sticky="center")
+        self.btn_stage_arrow.grid(row=1, column=0)
         self.controller.bind_hover(self.btn_stage_arrow, HIGHLIGHT, ACCENT_COLOR)
 
         lbl_stage_arrow = tk.Label(mid_frame, text="STAGE\nASSET", font=("Segoe UI", 7, "bold"), fg=TEXT_MUTED, bg=BG_COLOR)
