@@ -791,6 +791,7 @@ class TraceRustApp:
             return
             
         old_path = node.full_path
+        old_name = node.name
         parent_dir = os.path.dirname(old_path)
         new_path = os.path.join(parent_dir, new_name)
         
@@ -811,7 +812,38 @@ class TraceRustApp:
             self.write_rename_log(old_path, new_path)
             self.update_index_file_for_rename(old_path, new_path)
             self.update_container_paths_for_rename(old_path, new_path)
-            self.reload_scanner_viewport_index()
+            
+            # Update Treeview text in-place (no collapse!)
+            is_container = new_path in self.config_data["container_paths"]
+            new_display = f"{new_name} [BOX]" if is_container else new_name
+            self.explorer_tree.item(item_id, text=new_display)
+            
+            # Update node memory paths recursively
+            node.name = new_name
+            old_prefix = old_path
+            new_prefix = new_path
+            
+            def update_node_paths_recursive(n):
+                if n.full_path == old_prefix:
+                    n.full_path = new_prefix
+                elif n.full_path.startswith(old_prefix + os.sep):
+                    relative = n.full_path[len(old_prefix):].lstrip(os.sep)
+                    n.full_path = os.path.join(new_prefix, relative)
+                for child in n.children.values():
+                    update_node_paths_recursive(child)
+                    
+            update_node_paths_recursive(node)
+            
+            # Update keys in parent node dictionary
+            parent_id = self.explorer_tree.parent(item_id)
+            if parent_id == "":
+                if old_name in self.explorer_roots:
+                    self.explorer_roots[new_name] = self.explorer_roots.pop(old_name)
+            else:
+                parent_node = self.explorer_registry.get(parent_id)
+                if parent_node and old_name in parent_node.children:
+                    parent_node.children[new_name] = parent_node.children.pop(old_name)
+            
         except Exception as e:
             messagebox.showerror("Rename Failed", f"Could not rename file/folder:\n{e}")
             
