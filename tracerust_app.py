@@ -23,6 +23,62 @@ SECONDARY_BG = "#4c566a"      # Intermediate Slate Gray
 SELECT_BG = "#4c566a"         # Selected Tree Item Background
 HIGHLIGHT = "#8fbcbb"         # Frost Teal (Hover)
 
+class ToastNotification(tk.Frame):
+    def __init__(self, parent, title, message, status_type="info"):
+        border_color = "#88c0d0"
+        if status_type == "success":
+            border_color = "#a3be8c"
+        elif status_type == "error":
+            border_color = "#bf616a"
+            
+        super().__init__(parent, bg=border_color, bd=1)
+        self.parent = parent
+        
+        self.inner = tk.Frame(self, bg="#3b4252", padx=12, pady=10)
+        self.inner.pack(fill="both", expand=True)
+        
+        self.title_lbl = tk.Label(
+            self.inner, text=title, font=("Segoe UI", 9, "bold"), 
+            fg="#eceff4", bg="#3b4252"
+        )
+        self.title_lbl.pack(anchor="w")
+        
+        self.msg_lbl = tk.Label(
+            self.inner, text=message, font=("Segoe UI", 8), 
+            fg="#d8dee9", bg="#3b4252", wraplength=250, justify="left"
+        )
+        self.msg_lbl.pack(anchor="w", pady=(2, 0))
+        
+        self.width = 280
+        self.height = 70
+        
+        self.current_y = 100
+        self.place(relx=1.0, rely=1.0, x=-20, y=self.current_y, anchor="se", width=self.width, height=self.height)
+        
+        self.slide_in()
+
+    def slide_in(self):
+        if not self.winfo_exists():
+            return
+        if self.current_y > -20:
+            self.current_y -= 8
+            if self.current_y < -20:
+                self.current_y = -20
+            self.place(relx=1.0, rely=1.0, x=-20, y=self.current_y, anchor="se", width=self.width, height=self.height)
+            self.parent.after(15, self.slide_in)
+        else:
+            self.parent.after(3500, self.slide_out)
+
+    def slide_out(self):
+        if not self.winfo_exists():
+            return
+        if self.current_y < 120:
+            self.current_y += 8
+            self.place(relx=1.0, rely=1.0, x=-20, y=self.current_y, anchor="se", width=self.width, height=self.height)
+            self.parent.after(15, self.slide_out)
+        else:
+            self.destroy()
+
 class TreeNode:
     def __init__(self, name, is_dir=True):
         self.name = name
@@ -171,6 +227,11 @@ class TraceRustApp:
 
         self.setup_styles()
         self.build_navigation()
+
+    def show_toast(self, title, message, status_type="info"):
+        if hasattr(self, "active_toast") and self.active_toast and self.active_toast.winfo_exists():
+            self.active_toast.destroy()
+        self.active_toast = ToastNotification(self.canvas, title, message, status_type)
 
     def setup_styles(self):
         self.style = ttk.Style()
@@ -602,7 +663,7 @@ class TraceRustApp:
         self.scanner_prog_bar.grid_remove()
         self.btn_scanner_execute.config(state="normal", text="RUN HIGH-SPEED SCANNERS", bg=ACCENT_COLOR)
         if success:
-            messagebox.showinfo("Scanner Engine", "Parallel indexing successfully completed! Scan Explorer is reloaded.")
+            self.show_toast("Scan Complete", "Parallel indexing successfully completed! Scan Explorer is reloaded.", "success")
 
     def reload_scanner_viewport_index(self):
         path = self.get_index_path()
@@ -843,6 +904,8 @@ class TraceRustApp:
                 parent_node = self.explorer_registry.get(parent_id)
                 if parent_node and old_name in parent_node.children:
                     parent_node.children[new_name] = parent_node.children.pop(old_name)
+
+            self.show_toast("Rename Successful", f"Renamed item to '{new_name}' successfully.", "success")
             
         except Exception as e:
             messagebox.showerror("Rename Failed", f"Could not rename file/folder:\n{e}")
@@ -923,6 +986,7 @@ class TraceRustApp:
 
     def mark_explorer_containers_bulk(self):
         selected_items = self.explorer_tree.selection()
+        count = 0
         for item_id in selected_items:
             node = self.explorer_registry.get(item_id)
             if node:
@@ -930,10 +994,14 @@ class TraceRustApp:
                 if p not in self.config_data["container_paths"]:
                     self.config_data["container_paths"].append(p)
                     self.explorer_tree.item(item_id, text=f"{node.name} [BOX]", tags=("container",))
+                    count += 1
         self.save_config()
+        if count > 0:
+            self.show_toast("Marked Containers", f"Successfully tagged {count} container asset(s).", "success")
 
     def unmark_explorer_containers_bulk(self):
         selected_items = self.explorer_tree.selection()
+        count = 0
         for item_id in selected_items:
             node = self.explorer_registry.get(item_id)
             if node:
@@ -941,7 +1009,10 @@ class TraceRustApp:
                 if p in self.config_data["container_paths"]:
                     self.config_data["container_paths"].remove(p)
                     self.explorer_tree.item(item_id, text=node.name, tags=())
+                    count += 1
         self.save_config()
+        if count > 0:
+            self.show_toast("Tags Removed", f"Successfully untagged {count} container asset(s).", "info")
 
     # ==========================================
     # WINDOW NODE 2: TRACEMOVER 3-PANEL WORKSPACE
@@ -1601,7 +1672,7 @@ class TraceMoverViewport:
         self.parent.after(0, lambda: self.queue_status_lbl.config(text=msg))
 
     def on_staging_complete(self):
-        messagebox.showinfo("TraceMover Executor", "Sequential staging transfers successfully completed.")
+        self.controller.show_toast("Staging Executed", "Sequential staging transfers successfully completed.", "success")
         
         # Remove successful migrations from tree view queue
         remaining = []
