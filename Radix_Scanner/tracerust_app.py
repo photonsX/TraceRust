@@ -1040,8 +1040,9 @@ class TraceMoverViewport:
         # Grid layout matching 3-Panel design
         self.parent.rowconfigure(0, weight=3) # trees
         self.parent.rowconfigure(1, weight=2) # queue table below
-        self.parent.columnconfigure(0, weight=1)
-        self.parent.columnconfigure(1, weight=1)
+        self.parent.columnconfigure(0, weight=4)
+        self.parent.columnconfigure(1, weight=0)
+        self.parent.columnconfigure(2, weight=4)
 
         self.left_tree_registry = {}
         self.right_tree_registry = {}
@@ -1063,7 +1064,7 @@ class TraceMoverViewport:
             self.parent, text=" Source Tree Asset Container ", font=("Segoe UI", 9, "bold"),
             fg=TEXT_COLOR, bg=CARD_BG, padx=10, pady=10, bd=1, relief="flat"
         )
-        p1.grid(row=0, column=0, sticky="nsew", padx=(12, 6), pady=(12, 6))
+        p1.grid(row=0, column=0, sticky="nsew", padx=(12, 0), pady=(12, 6))
         p1.rowconfigure(0, weight=1)
         p1.columnconfigure(0, weight=1)
 
@@ -1077,11 +1078,8 @@ class TraceMoverViewport:
 
         self.source_tree.tag_configure("container", foreground=SUCCESS_COLOR)
 
-        # Drag & lazy load bindings
+        # Lazy load bindings
         self.source_tree.bind("<<TreeviewOpen>>", self.on_source_tree_expand)
-        self.source_tree.bind("<ButtonPress-1>", self.on_mover_drag_start)
-        self.source_tree.bind("<B1-Motion>", self.on_mover_drag_motion)
-        self.source_tree.bind("<ButtonRelease-1>", self.on_mover_drag_release)
 
         # Right-click context menu on source tree
         self.source_tree.bind("<Button-3>", self.show_source_tree_menu)
@@ -1091,13 +1089,33 @@ class TraceMoverViewport:
         )
 
         # ----------------------------------------
+        # MIDDLE PANEL: Stage Button Column
+        # ----------------------------------------
+        mid_frame = tk.Frame(self.parent, bg=BG_COLOR)
+        mid_frame.grid(row=0, column=1, sticky="ns", padx=10, pady=12)
+        mid_frame.rowconfigure(0, weight=1)
+        mid_frame.rowconfigure(1, weight=0)
+        mid_frame.rowconfigure(2, weight=1)
+        mid_frame.columnconfigure(0, weight=1)
+
+        self.btn_stage_arrow = tk.Button(
+            mid_frame, text=" ➡ ", command=self.stage_selected_items_via_button,
+            bg=ACCENT_COLOR, fg=BG_COLOR, font=("Segoe UI", 14, "bold"), relief="flat", padx=8, pady=8, bd=0
+        )
+        self.btn_stage_arrow.grid(row=1, column=0, sticky="center")
+        self.controller.bind_hover(self.btn_stage_arrow, HIGHLIGHT, ACCENT_COLOR)
+
+        lbl_stage_arrow = tk.Label(mid_frame, text="STAGE\nASSET", font=("Segoe UI", 7, "bold"), fg=TEXT_MUTED, bg=BG_COLOR)
+        lbl_stage_arrow.grid(row=2, column=0, sticky="n", pady=(6, 0))
+
+        # ----------------------------------------
         # PANEL 2 (Right Panel): Target Blueprint Viewport
         # ----------------------------------------
         p2 = tk.LabelFrame(
             self.parent, text=" Target Blueprint Viewport ", font=("Segoe UI", 9, "bold"),
             fg=TEXT_COLOR, bg=CARD_BG, padx=10, pady=10, bd=1, relief="flat"
         )
-        p2.grid(row=0, column=1, sticky="nsew", padx=(6, 12), pady=(12, 6))
+        p2.grid(row=0, column=2, sticky="nsew", padx=(0, 12), pady=(12, 6))
         p2.rowconfigure(1, weight=1)
         p2.columnconfigure(0, weight=1)
 
@@ -1385,56 +1403,39 @@ class TraceMoverViewport:
                 if kid.is_dir and not is_container and kid.children:
                     self.source_tree.insert(kid_id, "end", text="Loading...", tags=("dummy",))
 
-    # Drag and Drop Mechanics
-    def on_mover_drag_start(self, event):
-        item_id = self.source_tree.identify_row(event.y)
-        if not item_id:
+    # Stage Selection Mechanics
+    def stage_selected_items_via_button(self):
+        selected_left = self.source_tree.selection()
+        if not selected_left:
+            self.controller.show_toast("Staging Blocked", "Please select at least one container asset [BOX] on the left.", "error")
             return
-        node = self.left_tree_registry.get(item_id)
-        
-        # Staging rules: Only allow dragging folder nodes with container tag
-        if node and node.full_path in self.controller.config_data["container_paths"]:
-            self.drag_data["node"] = node
-            self.drag_data["item_id"] = item_id
-            self.source_tree.config(cursor="hand2")
-
-    def on_mover_drag_motion(self, event):
-        if not self.drag_data["node"]:
-            return
-        x, y = event.x_root, event.y_root
-        widget = self.source_tree.winfo_containing(x, y)
-        if widget == self.target_tree:
-            self.target_tree.config(cursor="plus")
+            
+        selected_right = self.target_tree.selection()
+        drive = self.drive_var.get()
+        if not selected_right:
+            root_item = self.target_tree.get_children()[0]
+            dest_path = drive
+            dest_item_id = root_item
         else:
-            self.source_tree.config(cursor="no")
+            dest_item_id = selected_right[0]
+            dest_path = self.get_virtual_dest_path(dest_item_id, drive)
 
-    def on_mover_drag_release(self, event):
-        self.source_tree.config(cursor="")
-        self.target_tree.config(cursor="")
-        
-        node = self.drag_data["node"]
-        if not node:
-            return
-            
-        x, y = event.x_root, event.y_root
-        widget = self.source_tree.winfo_containing(x, y)
-        if widget == self.target_tree:
-            rx = x - self.target_tree.winfo_rootx()
-            ry = y - self.target_tree.winfo_rooty()
-            dest_item_id = self.target_tree.identify_row(ry)
-            
-            drive = self.drive_var.get()
-            if not dest_item_id:
-                root_item = self.target_tree.get_children()[0]
-                dest_path = drive
-                dest_item_id = root_item
-            else:
-                dest_path = self.get_virtual_dest_path(dest_item_id, drive)
-                
-            self.stage_move_transaction(node, dest_path, dest_item_id)
-
-        self.drag_data["node"] = None
-        self.drag_data["item_id"] = None
+        staged_count = 0
+        skipped_count = 0
+        for item_id in selected_left:
+            node = self.left_tree_registry.get(item_id)
+            if node:
+                is_container = node.full_path in self.controller.config_data["container_paths"]
+                if is_container:
+                    self.stage_move_transaction(node, dest_path, dest_item_id)
+                    staged_count += 1
+                else:
+                    skipped_count += 1
+                    
+        if staged_count > 0:
+            self.controller.show_toast("Assets Staged", f"Successfully staged {staged_count} container asset(s) to migration queue.", "success")
+        if skipped_count > 0:
+            self.controller.show_toast("Warning", f"Skipped {skipped_count} unflagged folder(s)/file(s) (only [BOX] assets can be staged).", "error")
 
     def get_virtual_dest_path(self, item_id, drive):
         components = []
