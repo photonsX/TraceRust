@@ -1159,7 +1159,7 @@ class TraceMoverViewport:
             self.parent, text=" Stage Migration Queue Deck ", font=("Segoe UI", 9, "bold"),
             fg=TEXT_COLOR, bg=CARD_BG, padx=10, pady=10, bd=1, relief="flat"
         )
-        p3.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=12, pady=(6, 12))
+        p3.grid(row=1, column=0, columnspan=3, sticky="nsew", padx=12, pady=(6, 12))
         p3.rowconfigure(0, weight=1)
         p3.columnconfigure(0, weight=1)
 
