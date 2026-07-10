@@ -10,17 +10,26 @@ struct Config {
     scan_targets: Vec<String>,
     ignore_exact_folders: Vec<String>,
     ignore_folder_names: Vec<String>,
+    #[serde(default)]
+    media_source_paths: Vec<String>,
 }
 
 fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
-    // Attempt to load config.json from current working directory first,
-    // then from the executable's directory.
+    // Attempt to load config.json (or config.json.bak as fallback during transition)
     let mut config_path = PathBuf::from("config.json");
     if !config_path.exists() {
         if let Ok(exe_path) = env::current_exe() {
             if let Some(exe_dir) = exe_path.parent() {
                 config_path = exe_dir.join("config.json");
+                if !config_path.exists() {
+                    config_path = exe_dir.join("config.json.bak");
+                }
             }
+        }
+    } else {
+        // Current directory check
+        if !config_path.exists() {
+            config_path = PathBuf::from("config.json.bak");
         }
     }
 
@@ -31,7 +40,14 @@ fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Status: Initializing scanner...");
+    let args: Vec<String> = env::args().collect();
+    let is_media = args.contains(&"--media".to_string());
+
+    if is_media {
+        println!("Status: Initializing media scanner...");
+    } else {
+        println!("Status: Initializing standard scanner...");
+    }
     
     let config = match load_config() {
         Ok(cfg) => cfg,
@@ -41,8 +57,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
+    let target_paths = if is_media {
+        &config.media_source_paths
+    } else {
+        &config.scan_targets
+    };
+
     // Canonicalize scan roots and ignore paths
-    let scan_paths: Vec<PathBuf> = config.scan_targets.iter()
+    let scan_paths: Vec<PathBuf> = target_paths.iter()
         .map(|p| Path::new(p).canonicalize().unwrap_or_else(|_| PathBuf::from(p)))
         .collect();
 
@@ -57,13 +79,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|s| s.to_lowercase())
         .collect();
 
-    // Prepare output file next to config.json or in the current directory
-    let mut output_path = PathBuf::from("hard_drive_index.txt");
+    // Prepare output filename
+    let out_filename = if is_media {
+        "media_index.txt"
+    } else {
+        "hard_drive_index.txt"
+    };
+
+    let mut output_path = PathBuf::from(out_filename);
     if let Ok(exe_path) = env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
-            if exe_dir.join("config.json").exists() {
-                output_path = exe_dir.join("hard_drive_index.txt");
-            }
+            output_path = exe_dir.join(out_filename);
         }
     }
 
@@ -84,10 +110,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 children.retain(|entry_res| {
                     let entry = match entry_res {
                         Ok(e) => e,
-                        Err(_) => return true, // Keep errors so they can be handled later
+                        Err(_) => return true,
                     };
 
-                    // 1. Check if folder/file name matches ignore list
                     if let Some(file_name) = entry.file_name.to_str() {
                         let lower_name = file_name.to_lowercase();
                         if ignore_folder_names_clone.contains(&lower_name) {
@@ -95,7 +120,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
 
-                    // 2. Check if the entry starts with/is equal to any ignored path
                     if entry.file_type.is_dir() {
                         let entry_path = entry.path();
                         let entry_path_str = entry_path.to_string_lossy().to_lowercase();
@@ -114,19 +138,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let entry = match entry_res {
                 Ok(e) => e,
                 Err(e) => {
-                    // Fail gracefully on individual entry read errors (like permission denied)
                     eprintln!("Warning: Error reading entry: {}", e);
                     continue;
                 }
             };
 
             if entry.file_type.is_file() {
+                let path = entry.path();
+                
+                // If media mode, check video extensions
+                if is_media {
+                    let ext = path.extension()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("")
+                        .to_lowercase();
+                    if ext != "mp4" && ext != "mkv" && ext != "avi" && ext != "mov" {
+                        continue;
+                    }
+                }
+
                 let size = match entry.metadata() {
                     Ok(meta) => meta.len(),
                     Err(_) => 0,
                 };
 
-                let path_str = entry.path().to_string_lossy().to_string();
+                let path_str = path.to_string_lossy().to_string();
                 let clean_path = if path_str.starts_with(r"\\?\") {
                     &path_str[4..]
                 } else {
@@ -136,7 +172,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 writeln!(writer, "{} | {}", size, clean_path)?;
                 file_count += 1;
 
-                if file_count % 25000 == 0 {
+                if file_count % 15000 == 0 {
                     println!("Status: Indexed {} files...", file_count);
                     let _ = std::io::stdout().flush();
                 }
