@@ -1407,7 +1407,7 @@ class TraceMoverViewport:
     def stage_selected_items_via_button(self):
         selected_left = self.source_tree.selection()
         if not selected_left:
-            self.controller.show_toast("Staging Blocked", "Please select at least one container asset [BOX] on the left.", "error")
+            self.controller.show_toast("Staging Blocked", "Please select at least one file or folder on the left.", "error")
             return
             
         selected_right = self.target_tree.selection()
@@ -1421,21 +1421,14 @@ class TraceMoverViewport:
             dest_path = self.get_virtual_dest_path(dest_item_id, drive)
 
         staged_count = 0
-        skipped_count = 0
         for item_id in selected_left:
             node = self.left_tree_registry.get(item_id)
             if node:
-                is_container = node.full_path in self.controller.config_data["container_paths"]
-                if is_container:
-                    self.stage_move_transaction(node, dest_path, dest_item_id)
-                    staged_count += 1
-                else:
-                    skipped_count += 1
+                self.stage_move_transaction(node, dest_path, dest_item_id)
+                staged_count += 1
                     
         if staged_count > 0:
-            self.controller.show_toast("Assets Staged", f"Successfully staged {staged_count} container asset(s) to migration queue.", "success")
-        if skipped_count > 0:
-            self.controller.show_toast("Warning", f"Skipped {skipped_count} unflagged folder(s)/file(s) (only [BOX] assets can be staged).", "error")
+            self.controller.show_toast("Assets Staged", f"Successfully staged {staged_count} item(s) to migration queue.", "success")
 
     def get_virtual_dest_path(self, item_id, drive):
         components = []
